@@ -28,30 +28,149 @@ set canvas_backend xpyriment
 set bidi no
 set background black
 
+define form_text_display end_practice
+	set timeout infinite
+	set spacing 10
+	set rows "1;4;1"
+	set only_render no
+	set ok_text Ok
+	set margins "50;50;50;50"
+	set form_title "<span size=24>Title</span>"
+	set form_text "Your message"
+	set description "A simple text display form"
+	set cols "1;1;1"
+	set _theme gray
+	widget 0 0 3 1 label text="[form_title]"
+	widget 0 1 3 1 label center=no text="[form_text]"
+	widget 1 2 1 1 button text="[ok_text]"
+
+
 define sequence experiment
 	set flush_keyboard yes
 	set description "Runs a number of items in sequence"
-	run getting_started always
-	run welcome always
+	run make_slides always
+	run instructions always
+	run loop1 always
+	run end_practice always
 
-define notepad getting_started
-	__note__
-	Welcome to OpenSesame 3.0 "Interactive Ising"!
-	If you are new to OpenSesame, it is a good idea to follow one of the tutorials,
-	which can be found on the documentation site:
-	- <http://osdoc.cogsci.nl/>
-	You can also check out the examples. These can be opened via:
-	- Menu -> Tools -> Example experiments.
-	And feel free to ask for help on the forum:
-	- <http://forum.cogsci.nl/>
-	Have fun with OpenSesame!
-	__end__
-	set description "Some pointers to help you get started!"
-
-define sketchpad welcome
-	set start_response_interval no
-	set reset_variables no
+define sketchpad image_array
 	set duration keypress
 	set description "Displays stimuli"
-	draw textline center=1 color=white font_bold=no font_family=serif font_italic=no font_size=32 html=yes show_if=always text="OpenSesame 3.0 <i>Interactive Ising</i>" x=0 y=0 z_index=0
+	draw image center=1 file="[image0]" scale=1 show_if=always x=-256 y=-192 z_index=0
+	draw image center=1 file="[image1]" scale=1 show_if=always x=256 y=-192 z_index=0
+	draw image center=1 file="[image2]" scale=1 show_if=always x=-256 y=192 z_index=0
+	draw image center=1 file="[image3]" scale=1 show_if=always x=256 y=192 z_index=0
+
+define form_text_display instructions
+	set timeout infinite
+	set spacing 10
+	set rows "1;4;1"
+	set only_render no
+	set ok_text Ok
+	set margins "50;50;50;50"
+	set form_title "<span size=24>Title</span>"
+	set form_text "Your message"
+	set description "A simple text display form"
+	set cols "1;1;1"
+	set _theme gray
+	widget 0 0 3 1 label text="[form_title]"
+	widget 0 1 3 1 label center=no text="[form_text]"
+	widget 1 2 1 1 button text="[ok_text]"
+
+
+define inline_script load_images
+	set description "Executes Python code"
+	___run__
+	# get the current batch of image files
+	
+	var.image0 = var.slide_list[var.count_seq][0]
+	var.image1 = var.slide_list[var.count_seq][1]
+	var.image2 = var.slide_list[var.count_seq][2]
+	var.image3 = var.slide_list[var.count_seq][3]
+	__end__
+	set _prepare ""
+
+define loop loop1
+	set skip 0
+	set repeat 1
+	set order random
+	set offset no
+	set item seq
+	set description "Repeatedly runs another item"
+	set cycles 12
+	set column_order ""
+	set break_if never
+	run seq
+
+define inline_script make_slides
+	set description "Executes Python code"
+	___run__
+	from random import shuffle
+	
+	
+	def rotate(l, n=1):
+	    """returns a list rotated forward by n steps"""
+	    return l[n:] + l[:n]
+	
+	
+	def make_slides(cats=["injection", "negative", "neutral", "positive"],
+	                trial_length=12,
+	                imgformat="bmp"):
+	    """Returns a list of lists of filenames, one per slide. Filenames are given in
+	    the format {category}-{number}.{imgformat}. Categories are counterbalanced
+	    to appear equally in each area of the slide, and each image appears exactly
+	    once per trial.
+	    """
+	
+	    # templates is a list of lists of categories, showing how the image types
+	    # will be arranged on each slide
+	    templates = []
+	    # for twelve trials, we'll generate three groups of four slides. If the
+	    # trial length isn't divisible by the number of categories, we'll get an
+	    # error. Could fix by rounding up instead of down, but for now an error is
+	    # probably better.
+	    for m in range(int(trial_length/len(cats))):
+	        # get four counterbalanced slides by adding all rotations of the
+	        # current (random) order of categories
+	        shuffle(cats)
+	        templates.extend([rotate(cats, n) for n in range(len(cats))])
+	
+	    # indices is a dictionary of lists, containing the order of images for each
+	    # category
+	    indices = {}
+	    for cat in cats:
+	        indices[cat] = list(range(1, 13))
+	    [shuffle(indices[cat]) for cat in cats]
+	
+	    # slides is a list of lists of filenames as strings, in the order in which
+	    # they'll appear on the sketchpad.
+	    slides = []
+	    # Each image is determined by getting the next index value for the
+	    # appropriate template.
+	    for s in range(trial_length):
+	        # a list of filenames for the current slide
+	        filenames = []
+	        for i in templates[s]:
+	            filenames.append("{0}-{1:=02}.bmp".format(i, indices[i][s]))
+	        slides.append(filenames)
+	
+	    return slides
+	
+	var.slide_list = make_slides()
+	var.image0 = 'positive-01.bmp'
+	var.image1 = 'positive-02.bmp'
+	var.image2 = 'positive-03.bmp'
+	var.image3 = 'positive-04.bmp'
+	__end__
+	set _prepare ""
+
+define sequence new_sequence
+	set flush_keyboard yes
+	set description "Runs a number of items in sequence"
+
+define sequence seq
+	set flush_keyboard yes
+	set description "Runs a number of items in sequence"
+	run load_images always
+	run image_array always
 
