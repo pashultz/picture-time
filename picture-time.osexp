@@ -50,6 +50,7 @@ define sequence experiment
 	set description "Runs a number of items in sequence"
 	run make_slides always
 	run instructions always
+	run load_images_first always
 	run loop1 always
 	run end_practice always
 
@@ -81,12 +82,27 @@ define form_text_display instructions
 define inline_script load_images
 	set description "Executes Python code"
 	___run__
-	# get the current batch of image files
+	# get the next batch of image files
 	
-	var.image0 = var.slide_list[var.count_seq][0]
-	var.image1 = var.slide_list[var.count_seq][1]
-	var.image2 = var.slide_list[var.count_seq][2]
-	var.image3 = var.slide_list[var.count_seq][3]
+	var.image0 = var.slide_list[var.count_seq+1][0]
+	var.image1 = var.slide_list[var.count_seq+1][1]
+	var.image2 = var.slide_list[var.count_seq+1][2]
+	var.image3 = var.slide_list[var.count_seq+1][3]
+	__end__
+	set _prepare ""
+
+define inline_script load_images_first
+	set description "Executes Python code"
+	___run__
+	# get the next batch of image files
+	
+	# sketchpad items are generated before the sequence begins, for timing reasons
+	# so these variables need to be populated before the sequence begins
+	
+	var.image0 = var.slide_list[0][0]
+	var.image1 = var.slide_list[0][1]
+	var.image2 = var.slide_list[0][2]
+	var.image3 = var.slide_list[0][3]
 	__end__
 	set _prepare ""
 
@@ -171,6 +187,6 @@ define sequence new_sequence
 define sequence seq
 	set flush_keyboard yes
 	set description "Runs a number of items in sequence"
-	run load_images always
 	run image_array always
+	run load_images always
 

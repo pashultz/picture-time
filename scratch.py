@@ -25,8 +25,8 @@ def make_slides(cats=["injection", "negative", "neutral", "positive"],
     for m in range(int(trial_length/len(cats))):
         # get four counterbalanced slides by adding all rotations of the
         # current (random) order of categories
-        templates.extend([rotate(cats, n) for n in range(len(cats))])
         shuffle(cats)
+        templates.extend([rotate(cats, n) for n in range(len(cats))])
 
     # indices is a dictionary of lists, containing the order of images for each
     # category
