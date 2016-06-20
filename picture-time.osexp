@@ -84,10 +84,14 @@ define inline_script load_images
 	___run__
 	# get the next batch of image files
 	
-	var.image0 = var.slide_list[var.count_seq+1][0]
-	var.image1 = var.slide_list[var.count_seq+1][1]
-	var.image2 = var.slide_list[var.count_seq+1][2]
-	var.image3 = var.slide_list[var.count_seq+1][3]
+	if var.count_seq < (len(var.slide_list) - 1):
+	    var.image0 = var.slide_list[var.count_seq+1][0]
+	    var.image1 = var.slide_list[var.count_seq+1][1]
+	    var.image2 = var.slide_list[var.count_seq+1][2]
+	    var.image3 = var.slide_list[var.count_seq+1][3]
+	else:
+	    # don't bother looking beyond the last slide
+	    pass
 	__end__
 	set _prepare ""
 
@@ -173,16 +177,13 @@ define inline_script make_slides
 	    return slides
 	
 	var.slide_list = make_slides()
+	
 	var.image0 = 'positive-01.bmp'
 	var.image1 = 'positive-02.bmp'
 	var.image2 = 'positive-03.bmp'
 	var.image3 = 'positive-04.bmp'
 	__end__
 	set _prepare ""
-
-define sequence new_sequence
-	set flush_keyboard yes
-	set description "Runs a number of items in sequence"
 
 define sequence seq
 	set flush_keyboard yes
