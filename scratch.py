@@ -2,17 +2,18 @@ from random import shuffle
 
 
 def rotate(l, n=1):
-    """returns a list rotated forward by n steps"""
+    """Returns a list rotated forward by n steps."""
     return l[n:] + l[:n]
 
 
 def make_slides(cats=["injection", "negative", "neutral", "positive"],
                 trial_length=12,
                 imgformat="bmp"):
-    """Returns a list of lists of filenames, one per slide. Filenames are given in
-    the format {category}-{number}.{imgformat}. Categories are counterbalanced
-    to appear equally in each area of the slide, and each image appears exactly
-    once per trial.
+    """Returns a list of lists of filenames, one per slide.
+
+    Filenames are given in the format {category}-{number}.{imgformat}.
+    Categories are counterbalanced to appear equally in each area of
+    the slide, and each image appears exactly once per trial.
     """
 
     # templates is a list of lists of categories, showing how the image types
@@ -33,7 +34,7 @@ def make_slides(cats=["injection", "negative", "neutral", "positive"],
     indices = {}
     for cat in cats:
         indices[cat] = list(range(1, 13))
-    [shuffle(indices[cat]) for cat in cats]
+        shuffle(indices[cat])
 
     # slides is a list of lists of filenames as strings, in the order in which
     # they'll appear on the sketchpad.
@@ -44,7 +45,7 @@ def make_slides(cats=["injection", "negative", "neutral", "positive"],
         # a list of filenames for the current slide
         filenames = []
         for i in templates[s]:
-            filenames.append("{0}-{1:=02}.bmp".format(i, indices[i][s]))
+            filenames.append("{0}-{1:=02d}.bmp".format(i, indices[i][s]))
         slides.append(filenames)
 
     return slides

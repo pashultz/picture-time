@@ -1,9 +1,9 @@
 ---
 API: 2
-OpenSesame: 3.0.7b1
-Platform: posix
+OpenSesame: 3.1.0
+Platform: nt
 ---
-set width 1024
+set width 1920
 set uniform_coordinates yes
 set title "Picture Time"
 set subject_parity even
@@ -12,13 +12,13 @@ set start experiment
 set sampler_backend legacy
 set mouse_backend xpyriment
 set keyboard_backend legacy
-set height 768
+set height 1080
 set foreground white
 set font_size 18
 set font_italic no
 set font_family sans
 set font_bold no
-set experiment_path "/home/pashultz/Dropbox/picture-time"
+set experiment_path "C:/Users/armstrtr/Dropbox/picture-time"
 set description "Default description"
 set coordinates uniform
 set compensation 0
@@ -27,6 +27,15 @@ set clock_backend legacy
 set canvas_backend xpyriment
 set bidi no
 set background black
+
+define sketchpad FixDot
+	set duration 1500
+	set description "Displays stimuli"
+	draw fixdot color=white show_if=always style=default x=0 y=0 z_index=0
+
+define sketchpad InterTrialInterval
+	set duration 3000
+	set description "Displays stimuli"
 
 define form_text_display end_practice
 	set timeout infinite
@@ -51,11 +60,12 @@ define sequence experiment
 	run make_slides always
 	run instructions always
 	run load_images_first always
+	run new_pygaze_init always
 	run loop1 always
 	run end_practice always
 
 define sketchpad image_array
-	set duration keypress
+	set duration 18000
 	set description "Displays stimuli"
 	draw image center=1 file="[image0]" scale=1 show_if=always x=-256 y=-192 z_index=0
 	draw image center=1 file="[image1]" scale=1 show_if=always x=256 y=-192 z_index=0
@@ -111,15 +121,20 @@ define inline_script load_images_first
 	set _prepare ""
 
 define loop loop1
+	set source_file ""
+	set source table
 	set skip 0
-	set repeat 1
+	set repeat 12
 	set order random
 	set offset no
 	set item seq
 	set description "Repeatedly runs another item"
-	set cycles 12
+	set cycles 1
+	set continuous no
 	set column_order ""
+	set break_if_on_first yes
 	set break_if never
+	setcycle 0 empty_column ""
 	run seq
 
 define inline_script make_slides
@@ -185,9 +200,47 @@ define inline_script make_slides
 	__end__
 	set _prepare ""
 
+define logger new_logger
+	set description "Logs experimental data"
+	set auto_log yes
+
+define pygaze_init new_pygaze_init
+	set tracker_type EyeTribe
+	set smi_send_port 4444
+	set smi_recv_port 5555
+	set smi_ip "127.0.0.1"
+	set sacc_vel_thr 35
+	set sacc_acc_thr 9500
+	set eyelink_pupil_size_mode area
+	set eyelink_force_drift_correct yes
+	set description "Initialize and calibrate eye tracker"
+	set calibrate yes
+	set calbeep yes
+	set _logfile automatic
+
+define pygaze_log new_pygaze_log
+	set throttle 2
+	set msg ""
+	set description "Writes information to the eye-tracker logfile"
+	set auto_log yes
+
+define pygaze_start_recording new_pygaze_start_recording
+	set status_msg start_trial
+	set description "Puts the eye tracker into recording mode"
+
+define pygaze_stop_recording new_pygaze_stop_recording
+	set status_msg stop_trial
+	set description "Stops recording of eye tracking data"
+
 define sequence seq
 	set flush_keyboard yes
 	set description "Runs a number of items in sequence"
+	run new_pygaze_start_recording always
+	run FixDot always
 	run image_array always
+	run InterTrialInterval always
 	run load_images always
+	run new_logger always
+	run new_pygaze_log always
+	run new_pygaze_stop_recording always
 
