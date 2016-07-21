@@ -1,2 +1,10 @@
 .dropbox
 Thumbs.db
+local
+notes
+py/bin
+py/include
+py/lib
+py/local
+py/pip-selfcheck.json
+py/share
