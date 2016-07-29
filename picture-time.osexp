@@ -1,9 +1,9 @@
 ---
 API: 2
-OpenSesame: 3.1.0
+OpenSesame: 3.1.1
 Platform: nt
 ---
-set width 1920
+set width 1024
 set uniform_coordinates yes
 set title "Picture Time"
 set subject_parity even
@@ -12,7 +12,7 @@ set start experiment
 set sampler_backend legacy
 set mouse_backend xpyriment
 set keyboard_backend legacy
-set height 1080
+set height 768
 set foreground white
 set font_size 18
 set font_italic no
