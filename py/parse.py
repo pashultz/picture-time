@@ -69,14 +69,14 @@ class Fixation:
                      len(self.samples))
         # quadrants are numbered l2r, t2b
         # this seemed like a good way to calculate them, but maybe not...
-        self.quadrant = int(2*self.avgx/1920) + 2*int(2*self.avgy/1280)
+        self.quadrant = int(2*self.avgx/1280) + 2*int(2*self.avgy/1024)
 
     def as_dict(self):
         pass
 
 
 if __name__ == '__main__':
-    with open('../test-data/subject-998.tsv') as csvfile:
+    with open('../test-data/subject-555.tsv') as csvfile:
         reader = csv.DictReader(csvfile, dialect='excel-tab')
 
         # get to the first sample data
@@ -103,4 +103,5 @@ if __name__ == '__main__':
                 # if it's too short, it gets overwritten
                 current_fix = Fixation(row)
 
-        pprint([(f.start_time, f.duration, f.quadrant, f.avgx, f.avgy) for f in fixations])
+        pprint([(f.start_time, f.duration, f.quadrant, f.avgx, f.avgy)
+                for f in fixations])
