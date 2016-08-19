@@ -2,6 +2,7 @@
 
 import csv
 from itertools import ifilterfalse
+from pprint import pprint
 import re
 import sys
 
@@ -9,7 +10,8 @@ import sys
 class Experiment:
     """A run of the experiment."""
 
-    def __init__(self, subject_number, directory='../DH_data'):
+    def __init__(self, subject_number,
+                 directory='../../disgust-habituation/experiment/data'):
         self.subject_number = subject_number
         self.directory = directory
 
@@ -19,6 +21,55 @@ class Experiment:
         self.timestamp_offset = self.get_timestamp_offset()
         self.experiment_start_time = self.get_experiment_start_time()
         self.trials = self.get_trials()
+
+        self.get_fixations()
+
+        for t in self.trials:
+            t.time_disgust, t.time_neutral = t.aggregate_gaze_data()
+
+    def get_fixations(self):
+        """Populates the trials with lists of fixations."""
+
+        with open(self.directory
+                  + "/subject-" + str(self.subject_number)
+                  + ".tsv") as tsvfile:
+            reader = csv.DictReader(tsvfile, dialect='excel-tab')
+
+            # filter out messages and blinks
+            # and ignore everything before and after this trial
+
+            rows = ifilterfalse(
+                (lambda row: row['timestamp'] == 'MSG'
+                 or row['avgx'] == '0.0'),
+                reader
+            )
+
+            for i in range(len(self.trials)):
+                print('processing trial {}.{}'.format(self.subject_number, i))
+                trial = self.trials[i]
+                trial.fixations = []
+                try:
+                    current_fix = Fixation(rows.next())
+                except StopIteration:
+                    print('Warning: no samples '
+                          'for Subject {} starting at {}'
+                          .format(self.subject_number, trial.start_time))
+                    continue
+
+                row = rows.next()
+                while int(row['time']) < trial.end_time:
+                    if current_fix.still_going(row):
+                        current_fix.samples.append(row)
+                    else:
+                        current_fix.finish()
+                        if current_fix.duration >= current_fix.min_duration:
+                            trial.fixations.append(current_fix)
+                            # if it's too short, it gets overwritten
+                        current_fix = Fixation(row)
+                    try:
+                        row = rows.next()
+                    except StopIteration:
+                        break
 
     def get_trials(self):
         """Returns a list of Trial objects with run-order information."""
@@ -150,12 +201,12 @@ class Fixation:
         # quadrants are numbered l2r, t2b
         # this seemed like a good way to calculate them, but maybe not...
         self.quadrant = int(2*self.avgx/1280) + 2*int(2*self.avgy/1024)
+        del self.samples
 
 
 class Trial:
     """An image-viewing trial."""
     def __init__(self, experiment, start_time, end_time, run_order):
-        self.experiment = experiment
         self.start_time = start_time
         self.end_time = end_time
         self.run_order = run_order
@@ -164,72 +215,20 @@ class Trial:
         self.disgust_on_left = (
             self.run_order['LeftImage'] == '[DisgustImage]')
 
-        self.fixations = self.get_fixations()
-        self.time_disgust, self.time_neutral = self.aggregate_gaze_data()
-
-    def aggregate_gaze_data(self):
+    def aggregate_gaze_data(self, resolution=(1280, 1024)):
         """Returns a tuple: (time_disgust, time_neutral)"""
 
         time_left = sum(f.duration
                         for f in self.fixations
-                        if f.avgx < self.experiment.resolution[0] / 2)
+                        if f.avgx < resolution[0] / 2)
         time_right = sum(f.duration
                          for f in self.fixations
-                         if f.avgx >= self.experiment.resolution[0] / 2)
+                         if f.avgx >= resolution[0] / 2)
 
         if self.disgust_on_left:
             return (time_left, time_right)
         else:
             return (time_right, time_left)
-
-    def get_fixations(self):
-        """Returns a list of all the fixations in the trial."""
-
-        with open(self.experiment.directory
-                  + "/subject-" + str(self.experiment.subject_number)
-                  + ".tsv") as tsvfile:
-            reader = csv.DictReader(tsvfile, dialect='excel-tab')
-
-            # filter out messages and blinks
-            # and ignore everything before and after this trial
-
-            # TODO "Why is this program so slow?" Oh, that's because
-            # it iterates over the entire file for each trial. Since
-            # we know the file is more or less in chronological order,
-            # it would be VASTLY more efficient to search for a
-            # message marking the space between trials, and then
-            # resume the filter at that point. This means refactoring
-            # so the file is opened at the Experiment scope rather
-            # than the function scope.
-            rows = ifilterfalse(
-                (lambda row: row['timestamp'] == 'MSG'
-                 or row['avgx'] == '0.0'
-                 or int(row['time']) < self.start_time
-                 or int(row['time']) > self.end_time),
-                reader
-            )
-
-            fixations = []
-            try:
-                current_fix = Fixation(rows.next())
-            except StopIteration:
-                print('Warning: no samples '
-                      'for Subject {} starting at {}'
-                      .format(self.experiment.subject_number, self.start_time))
-                return []
-
-            for row in rows:
-                if current_fix.still_going(row):
-                    current_fix.samples.append(row)
-                else:
-                    current_fix.finish()
-                    if current_fix.duration >= current_fix.min_duration:
-                        fixations.append(current_fix)
-                        # if it's too short, it gets overwritten
-                    current_fix = Fixation(row)
-
-            return fixations
-
 
 def tabulate_gaze(directory):
     for i in range(302, 306):
@@ -242,15 +241,44 @@ def tabulate_gaze(directory):
         print('block 2 | disgust: {}ms; neutral: {}ms'.format(
             sum(t.time_disgust for t in block2),
             sum(t.time_neutral for t in block2)))
+        del e
 
 
-# def main(subject=302):
-#     e = Experiment(subject)
-#     print([t.time_disgust for t in e.trials])
+def tabulate_trials_per_subject(directory):
+    """Returns a list of dicts, with each trial keyed as d|n{block}.{trial}."""
+
+    subjects = []
+    for s in range(300, 333):
+        print('loading subject {}'.format(s))
+        e = Experiment(s, directory)
+        d = {'asub': e.subject_number}
+        d.update({'d1.{:02}'.format(t + 1): e.trials[t].time_disgust
+                  for t in range(24)})
+        d.update({'d2.{:02}'.format(t-23): e.trials[t].time_disgust
+                  for t in range(24, 48)})
+        d.update({'n1.{:02}'.format(t + 1): e.trials[t].time_neutral
+                  for t in range(24)})
+        d.update({'n2.{:02}'.format(t-23): e.trials[t].time_neutral
+                  for t in range(24, 48)})
+        subjects.append(d)
+
+    return subjects
+
+
+def write_dictlist_to_csv(dictlist, filename, directory):
+    """Write a list of dicts to a CSV file."""
+
+    with open(directory + filename, 'w') as f:
+        writer = csv.DictWriter(f,
+                                sorted(dictlist[0].keys()))
+        writer.writeheader()
+        for d in dictlist:
+            writer.writerow(d)
 
 
 if __name__ == '__main__':
-    try:
-        tabulate_gaze('../DH_data')
-    except IndexError, TypeError:
-        print("Usage: {} subject_number [data_directory]".format(sys.argv[0]))
+    subjects = tabulate_trials_per_subject(
+        '../../disgust-habituation/experiment/data')
+    write_dictlist_to_csv(subjects,
+                          'trials_by_subject.csv',
+                          '../../disgust-habituation/experiment/data/')
