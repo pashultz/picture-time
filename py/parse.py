@@ -2,9 +2,7 @@
 
 import csv
 from itertools import ifilterfalse
-from pprint import pprint
 import re
-import sys
 
 
 class Experiment:
@@ -35,41 +33,36 @@ class Experiment:
                   + ".tsv") as tsvfile:
             reader = csv.DictReader(tsvfile, dialect='excel-tab')
 
-            # filter out messages and blinks
-            # and ignore everything before and after this trial
-
+            # filter out messages
             rows = ifilterfalse(
-                (lambda row: row['timestamp'] == 'MSG'
-                 or row['avgx'] == '0.0'),
+                (lambda row: row['timestamp'] == 'MSG'),
                 reader
             )
 
             for i in range(len(self.trials)):
-                print('processing trial {}.{}'.format(self.subject_number, i))
                 trial = self.trials[i]
                 trial.fixations = []
-                try:
-                    current_fix = Fixation(rows.next())
-                except StopIteration:
-                    print('Warning: no samples '
-                          'for Subject {} starting at {}'
-                          .format(self.subject_number, trial.start_time))
-                    continue
 
+                # get to the beginning of the trial
                 row = rows.next()
+                while int(row['time']) < trial.start_time:
+                    row = rows.next()
+
+                # try a fixation, just to get things going
+                current_fix = Fixation(row)
+                row = rows.next()
+
                 while int(row['time']) < trial.end_time:
                     if current_fix.still_going(row):
                         current_fix.samples.append(row)
+                        row = rows.next()
                     else:
                         current_fix.finish()
                         if current_fix.duration >= current_fix.min_duration:
                             trial.fixations.append(current_fix)
-                            # if it's too short, it gets overwritten
+                        # if it's too short, it gets overwritten
                         current_fix = Fixation(row)
-                    try:
                         row = rows.next()
-                    except StopIteration:
-                        break
 
     def get_trials(self):
         """Returns a list of Trial objects with run-order information."""
@@ -175,13 +168,19 @@ class Fixation:
     def still_going(self, sample):
         """Decides whether the sample continues this fixation."""
 
+        # if there's a blink, scrap the fixation
+        if sample['avgx'] == '0.0':
+            return False
+
         # update the dispersion boundary
         self.max_x = max(self.max_x, float(sample['avgx']))
         self.max_y = max(self.max_y, float(sample['avgy']))
         self.min_x = min(self.min_x, float(sample['avgx']))
         self.min_y = min(self.min_y, float(sample['avgy']))
-        diameter_squared = (self.max_x - self.min_x)**2
-        + (self.max_y - self.min_y)**2
+        diameter_squared = (
+            (self.max_x - self.min_x)**2
+            + (self.max_y - self.min_y)**2
+            )
 
         # compare the diameter of our dispersion window to the threshold
         # but we use the square of the threshold to save a step
@@ -192,6 +191,11 @@ class Fixation:
             return False
 
     def finish(self):
+        # if the fixation is only a blink event
+        if not hasattr(self, 'samples'):
+            self.duration = 0
+            return
+
         self.end = int(self.samples[-1]['time'])
         self.duration = self.end - self.start_time
         self.avgx = (sum([float(s['avgx']) for s in self.samples]) /
@@ -200,6 +204,7 @@ class Fixation:
                      len(self.samples))
         # quadrants are numbered l2r, t2b
         # this seemed like a good way to calculate them, but maybe not...
+        # TODO pass screen resolution as parameters
         self.quadrant = int(2*self.avgx/1280) + 2*int(2*self.avgy/1024)
         del self.samples
 
@@ -230,6 +235,7 @@ class Trial:
         else:
             return (time_right, time_left)
 
+
 def tabulate_gaze(directory):
     for i in range(302, 306):
         print('Processing subject {}...'.format(i))
@@ -247,8 +253,13 @@ def tabulate_gaze(directory):
 def tabulate_trials_per_subject(directory):
     """Returns a list of dicts, with each trial keyed as d|n{block}.{trial}."""
 
+    # subject 333 didn't show
+    subject_numbers = list(range(300, 355))
+    subject_numbers.remove(333)
+    subject_numbers.remove(353)
+
     subjects = []
-    for s in range(300, 333):
+    for s in subject_numbers:
         print('loading subject {}'.format(s))
         e = Experiment(s, directory)
         d = {'asub': e.subject_number}
