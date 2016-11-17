@@ -2,6 +2,7 @@
 
 import csv
 from itertools import ifilterfalse
+import os
 import re
 
 
@@ -23,7 +24,7 @@ class Experiment:
         self.get_fixations()
 
         for t in self.trials:
-            t.time_disgust, t.time_neutral = t.aggregate_gaze_data()
+            t.time_disgust, t.time_neutral, t.time_away = t.aggregate_gaze_data()
 
     def get_fixations(self):
         """Populates the trials with lists of fixations."""
@@ -155,7 +156,7 @@ class Fixation:
         'quadrant' (int): the quadrant of the screen
     """
 
-    def __init__(self, sample, threshold=50, min_duration=100):
+    def __init__(self, sample, threshold=55, min_duration=100):
         self.start_time = int(sample['time'])
         self.samples = [sample]
         # the dispersion window starts as a point
@@ -206,6 +207,7 @@ class Fixation:
         # this seemed like a good way to calculate them, but maybe not...
         # TODO pass screen resolution as parameters
         self.quadrant = int(2*self.avgx/1280) + 2*int(2*self.avgy/1024)
+        # stop it from running out of memory!
         del self.samples
 
 
@@ -221,19 +223,30 @@ class Trial:
             self.run_order['LeftImage'] == '[DisgustImage]')
 
     def aggregate_gaze_data(self, resolution=(1280, 1024)):
-        """Returns a tuple: (time_disgust, time_neutral)"""
+        """Returns a tuple: (time_disgust, time_neutral, time_away)"""
 
         time_left = sum(f.duration
                         for f in self.fixations
-                        if f.avgx < resolution[0] / 2)
+                        # let's do this the quick-and-dirty way
+                        if 120 <= f.avgx <= 520 and 362 <= f.avgy <= 662
+                        )
         time_right = sum(f.duration
                          for f in self.fixations
-                         if f.avgx >= resolution[0] / 2)
+                         if 760 <= f.avgx <= 1160 and 362 <= f.avgy <= 662
+                         )
+        time_away = sum(f.duration
+                        for f in self.fixations
+                        if (
+                            f.avgx <= 120 or f.avgx >= 1160 or
+                            f.avgy <= 362 or f.avgy >= 662 or
+                            520 <= f.avgx <= 760
+                           )
+                        )
 
         if self.disgust_on_left:
-            return (time_left, time_right)
+            return (time_left, time_right, time_away)
         else:
-            return (time_right, time_left)
+            return (time_right, time_left, time_away)
 
 
 def tabulate_gaze(directory):
@@ -253,29 +266,36 @@ def tabulate_gaze(directory):
 def tabulate_trials_per_subject(directory):
     """Returns a list of dicts, with each trial keyed as d|n{block}.{trial}."""
 
-    # subject 333 didn't show
-    subject_numbers = list(range(300, 355))
-    subject_numbers.remove(333)
-    subject_numbers.remove(353)
-
+    subject_numbers = sorted([int(f[f.index('-') + 1:f.index('.')])
+                              for f in
+                              os.listdir("/home/pashultz/Dropbox/disgust-habituation/experiment/data/")
+                              if f[-3:] == 'tsv'])
+    #This code pulls out variables and puts them in SPSS-firendly format
     subjects = []
-    for s in subject_numbers:
+    for s in [sub for sub in subject_numbers if sub <= 414]:
         print('loading subject {}'.format(s))
         e = Experiment(s, directory)
         d = {'asub': e.subject_number}
-        d.update({'d1.{:02}'.format(t + 1): e.trials[t].time_disgust
+        try:
+            d.update({'d1.{:02}'.format(t + 1): e.trials[t].time_disgust
                   for t in range(24)})
-        d.update({'d2.{:02}'.format(t-23): e.trials[t].time_disgust
+            d.update({'d2.{:02}'.format(t - 23): e.trials[t].time_disgust
                   for t in range(24, 48)})
-        d.update({'n1.{:02}'.format(t + 1): e.trials[t].time_neutral
+            d.update({'n1.{:02}'.format(t + 1): e.trials[t].time_neutral
                   for t in range(24)})
-        d.update({'n2.{:02}'.format(t-23): e.trials[t].time_neutral
+            d.update({'n2.{:02}'.format(t - 23): e.trials[t].time_neutral
                   for t in range(24, 48)})
-        subjects.append(d)
+            d.update({'w1.{:02}'.format(t + 1): e.trials[t].time_away
+                  for t in range(24)})
+            d.update({'w2.{:02}'.format(t - 23): e.trials[t].time_away
+                  for t in range(24, 48)})
+            subjects.append(d)
+        except IndexError:
+            print("SOMEbody didn't do enough trials!")
 
     return subjects
 
-
+#This code writes the data file
 def write_dictlist_to_csv(dictlist, filename, directory):
     """Write a list of dicts to a CSV file."""
 
@@ -289,7 +309,8 @@ def write_dictlist_to_csv(dictlist, filename, directory):
 
 if __name__ == '__main__':
     subjects = tabulate_trials_per_subject(
-        '../../disgust-habituation/experiment/data')
+       '../../disgust-habituation/experiment/data')
     write_dictlist_to_csv(subjects,
-                          'trials_by_subject.csv',
-                          '../../disgust-habituation/experiment/data/')
+                         'trials_by_subject.csv',
+                         '../../disgust-habituation/experiment/data/')
+    pass
