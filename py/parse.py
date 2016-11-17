@@ -24,7 +24,8 @@ class Experiment:
         self.get_fixations()
 
         for t in self.trials:
-            t.time_disgust, t.time_neutral, t.time_away = t.aggregate_gaze_data()
+            (t.time_disgust, t.time_neutral, t.time_away
+             = t.aggregate_gaze_data())
 
     def get_fixations(self):
         """Populates the trials with lists of fixations."""
@@ -268,9 +269,9 @@ def tabulate_trials_per_subject(directory):
 
     subject_numbers = sorted([int(f[f.index('-') + 1:f.index('.')])
                               for f in
-                              os.listdir("/home/pashultz/Dropbox/disgust-habituation/experiment/data/")
+                              os.listdir(directory)
                               if f[-3:] == 'tsv'])
-    #This code pulls out variables and puts them in SPSS-firendly format
+    # This code pulls out variables and puts them in SPSS-firendly format
     subjects = []
     for s in [sub for sub in subject_numbers if sub <= 414]:
         print('loading subject {}'.format(s))
@@ -278,24 +279,25 @@ def tabulate_trials_per_subject(directory):
         d = {'asub': e.subject_number}
         try:
             d.update({'d1.{:02}'.format(t + 1): e.trials[t].time_disgust
-                  for t in range(24)})
+                      for t in range(24)})
             d.update({'d2.{:02}'.format(t - 23): e.trials[t].time_disgust
-                  for t in range(24, 48)})
+                      for t in range(24, 48)})
             d.update({'n1.{:02}'.format(t + 1): e.trials[t].time_neutral
-                  for t in range(24)})
+                      for t in range(24)})
             d.update({'n2.{:02}'.format(t - 23): e.trials[t].time_neutral
-                  for t in range(24, 48)})
+                      for t in range(24, 48)})
             d.update({'w1.{:02}'.format(t + 1): e.trials[t].time_away
-                  for t in range(24)})
+                      for t in range(24)})
             d.update({'w2.{:02}'.format(t - 23): e.trials[t].time_away
-                  for t in range(24, 48)})
+                      for t in range(24, 48)})
             subjects.append(d)
         except IndexError:
             print("SOMEbody didn't do enough trials!")
 
     return subjects
 
-#This code writes the data file
+
+# This code writes the data file
 def write_dictlist_to_csv(dictlist, filename, directory):
     """Write a list of dicts to a CSV file."""
 
@@ -311,6 +313,6 @@ if __name__ == '__main__':
     subjects = tabulate_trials_per_subject(
        '../../disgust-habituation/experiment/data')
     write_dictlist_to_csv(subjects,
-                         'trials_by_subject.csv',
-                         '../../disgust-habituation/experiment/data/')
+                          'trials_by_subject.csv',
+                          '../../disgust-habituation/experiment/data/')
     pass
