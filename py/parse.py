@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python2
 
 import csv
 from itertools import ifilterfalse
@@ -24,8 +24,9 @@ class Experiment:
         self.get_fixations()
 
         for t in self.trials:
-            (t.time_disgust, t.time_neutral, t.time_away
-             = t.aggregate_gaze_data())
+            (t.time_disgust,
+             t.time_neutral,
+             t.time_away) = t.aggregate_gaze_data()
 
     def get_fixations(self):
         """Populates the trials with lists of fixations."""
@@ -249,6 +250,79 @@ class Trial:
         else:
             return (time_right, time_left, time_away)
 
+    def orientation_category(self):
+        """After an initial fixation at center, the category of the first
+        image the subject fixes on. If the first fixation isn't
+        centered, or if it's wonky for some other reason, raise an
+        InvalidTrial exception.
+
+        """
+
+        # the center of the screen
+        # TODO un-hardcode the resolution
+        center = complex(1280/2, 1024/2)
+
+        # the offset of each fixation from center
+        offsets = [complex(f.avgx, f.avgy)
+                   - center for f in self.fixations]
+
+        # if the first fixation isn't in the center, chuck the trial
+        try:
+            # TODO un-hardcode the centering threshold
+            if abs(offsets[0]) > 55:
+                return None
+        # also if there are no fixations
+        except IndexError:
+            return None
+
+        # TODO maybe a good use for a custom exception?
+            # raise InvalidTrial(
+            #     'Fixation not centered in trial starting at {}'
+            #     .format(self.start_time))
+
+        noncentered_fixations = filter(lambda x: abs(x) > 55, offsets)
+        try:
+            bias = noncentered_fixations[0].real
+        except IndexError:
+            # if no noncentered fixations, chuck it
+            return None
+
+        if self.disgust_on_left:
+            sides = ('disgust', 'neutral')
+        else:
+            sides = ('neutral', 'disgust')
+
+        if bias < 0:
+            return sides[0]
+        else:
+            return sides[1]
+
+
+# User-defined exceptions go here
+class InvalidTrial(Exception):
+    """Something has gone wrong with the trial"""
+
+    def __init__(self, value=''):
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)
+
+
+# Global functions
+def orientation_bias(trials):
+    """Given a list of trials, return the proportion (0<x<1) that begin
+    with a fixation on the disgusting stimulus.
+    """
+
+    orients = [t.orientation_category() for t in trials
+               if t.orientation_category]
+
+    if len(orients) == 0:
+        return None
+    else:
+        return orients.count('disgust')/float(len(orients))
+
 
 def tabulate_gaze(directory):
     for i in range(302, 306):
@@ -264,8 +338,34 @@ def tabulate_gaze(directory):
         del e
 
 
+def tabulate_orientation_bias(directory):
+    """Returns a list of dicts. For each subject, it gives:
+    - subject
+    - bias_block1
+    - bias_block2
+    """
+
+    biases = []
+
+    subject_numbers = sorted([int(f[f.index('-') + 1:f.index('.')])
+                              for f in
+                              os.listdir(directory)
+                              if f[-3:] == 'tsv'])
+
+    for subject in subject_numbers:
+        print('trying {}'.format(subject))
+        e = Experiment(subject)
+        biases.append({
+            'subject': subject,
+            'bias_block1': orientation_bias(e.trials[:24]),
+            'bias_block2': orientation_bias(e.trials[25:])
+            })
+
+    return biases
+
+
 def tabulate_trials_per_subject(directory):
-    """Returns a list of dicts, with each trial keyed as d|n{block}.{trial}."""
+    """Returns a list of dicts, with each trial keyed as d|n[block].[trial]."""
 
     subject_numbers = sorted([int(f[f.index('-') + 1:f.index('.')])
                               for f in
@@ -310,9 +410,9 @@ def write_dictlist_to_csv(dictlist, filename, directory):
 
 
 if __name__ == '__main__':
-    subjects = tabulate_trials_per_subject(
+    subjects = tabulate_orientation_bias(
        '../../disgust-habituation/experiment/data')
     write_dictlist_to_csv(subjects,
-                          'trials_by_subject.csv',
+                          'orientation_bias_by_subject.csv',
                           '../../disgust-habituation/experiment/data/')
     pass
