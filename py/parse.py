@@ -20,6 +20,8 @@ class Experiment:
         self.timestamp_offset = self.get_timestamp_offset()
         self.experiment_start_time = self.get_experiment_start_time()
         self.trials = self.get_trials()
+        # two blocks of six subblocks of four trials each
+        self.subblocks = [self.trials[4*i:4*(i+1)] for i in range(12)]
 
         self.get_fixations()
 
@@ -63,7 +65,7 @@ class Experiment:
                         current_fix.finish()
                         if current_fix.duration >= current_fix.min_duration:
                             trial.fixations.append(current_fix)
-                        # if it's too short, it gets overwritten
+                        # if it's too short, just overwrite it with a new one
                         current_fix = Fixation(row)
                         row = rows.next()
 
@@ -342,7 +344,19 @@ def tabulate_orientation_bias(directory):
     """Returns a list of dicts. For each subject, it gives:
     - subject
     - bias_block1
+    - bias_block1_1
+    - bias_block1_2
+    - bias_block1_3
+    - bias_block1_4
+    - bias_block1_5
+    - bias_block1_6
     - bias_block2
+    - bias_block2_1
+    - bias_block2_2
+    - bias_block2_3
+    - bias_block2_4
+    - bias_block2_5
+    - bias_block2_6
     """
 
     biases = []
@@ -360,6 +374,13 @@ def tabulate_orientation_bias(directory):
             'bias_block1': orientation_bias(e.trials[:24]),
             'bias_block2': orientation_bias(e.trials[25:])
             })
+
+        for i in range(6):
+            (biases[-1]["bias_block1_{}".format(i + 1)]
+             ) = orientation_bias(e.subblocks[i])
+        for i in range(6):
+            (biases[-1]["bias_block2_{}".format(i + 1)]
+             ) = orientation_bias(e.subblocks[i + 6])
 
     return biases
 
