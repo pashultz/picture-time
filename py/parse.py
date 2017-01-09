@@ -6,6 +6,40 @@ import os
 import re
 
 
+class Epoch:
+    """A short segment of a trial."""
+
+    def __init__(self, fixations, start_time, duration):
+        self.start_time, self.duration = start_time, duration
+        self.fixations = fixations
+        self.calculate_dwell_times()
+
+    def __repr__(self):
+        return(str(self.start_time))
+
+    def calculate_dwell_times(self):
+        """How long did the subject dwell on each type of stimulus?"""
+
+        self.time_away = self.time_disgust = self.time_neutral = 0
+
+        for f in self.fixations:
+            # figure out how much time is within the epoch,
+            crop = (
+                min(self.start_time + self.duration, f.end_time)
+                - max(self.start_time, f.start_time)
+                )
+
+            # and add the time to the right category
+            if f.category == 'away':
+                self.time_away += crop
+            elif f.category == 'disgust':
+                self.time_disgust += crop
+            elif f.category == 'neutral':
+                self.time_neutral += crop
+            else:
+                raise(Exception('Unclassified fixation'))
+
+
 class Experiment:
     """A run of the experiment."""
 
@@ -29,9 +63,17 @@ class Experiment:
             (t.time_disgust,
              t.time_neutral,
              t.time_away) = t.aggregate_gaze_data()
+            t.make_epochs()
 
     def get_fixations(self):
-        """Populates the trials with lists of fixations."""
+        """Populates the trials with lists of fixations.
+
+        It may be inelegant to do this at the level of the Experiment
+        rather than the Trial, but my first attempt at
+        Trial.get_fixations() involved scanning the entire .tsv file
+        48 times for each experiment, which made things unacceptably
+        slow.
+        """
 
         with open(self.directory
                   + "/subject-" + str(self.subject_number)
@@ -58,11 +100,12 @@ class Experiment:
                 row = rows.next()
 
                 while int(row['time']) < trial.end_time:
-                    if current_fix.still_going(row):
+                    if current_fix.is_still_going(row):
                         current_fix.samples.append(row)
                         row = rows.next()
                     else:
                         current_fix.finish()
+                        current_fix.classify(trial.disgust_on_left)
                         if current_fix.duration >= current_fix.min_duration:
                             trial.fixations.append(current_fix)
                         # if it's too short, just overwrite it with a new one
@@ -144,7 +187,8 @@ class Fixation:
 
     Public methods:
 
-    still_going(dict) -- decide whether a sample continues this fixation event.
+    is_still_going(dict) -- decide whether a sample continues this
+        fixation event.
 
     finish() -- calculate a bunch of properties when the fixation is done.
 
@@ -152,12 +196,12 @@ class Fixation:
         'trial' (int): number of trial
         # 'ordinal' (int): ordinal number of fixation within the trial
         #     wait, actually we can just get this from the list of fixations
-        'start' (int): time of start
-        'end' (int): time of end
+        'start_time' (int): time of start
+        'end_time' (int): time of end
         'duration' (int): duration in ms
         'avgx' (float): average x for all samples within fixation
         'avgy' (float): average y
-        'quadrant' (int): the quadrant of the screen
+        'category' (string): the type of image being stared at
     """
 
     def __init__(self, sample, threshold=55, min_duration=100):
@@ -170,7 +214,70 @@ class Fixation:
         self.threshold_squared = threshold**2
         self.min_duration = min_duration
 
-    def still_going(self, sample):
+    def __repr__(self):
+        """Show a more informative description."""
+
+        return("fixation at {} dur {} {}".format(self.start_time,
+                                                 self.duration,
+                                                 self.category))
+
+    def classify(self, disgust_on_left,
+                 left_boundaries=[662, 520, 362, 120],
+                 right_boundaries=[662, 1160, 362, 760]):
+        """Set self.category to a string naming the type of image.
+        The 'x_boundaries' parameters are lists of coordinates in CSS order:
+        [top, right, bottom, left]
+        """
+
+        # figure out what part of the screen we're looking at
+        if (
+                self.avgx < left_boundaries[3]
+                or self.avgx > right_boundaries[3]
+                or self.avgy < left_boundaries[2]
+                or self.avgy > left_boundaries[0]
+        ):
+            position = 'out of bounds'
+        elif left_boundaries[1] < self.avgx < right_boundaries[3]:
+            position = 'in between'
+        elif self.avgx < left_boundaries[1]:
+            position = 'left'
+        else:
+            position = 'right'
+
+        # figure out what category that corresponds to
+        if (
+            (position == 'left' and disgust_on_left)
+            or (position == 'right' and not disgust_on_left)
+        ):
+            self.category = 'disgust'
+        elif (
+            (position == 'left' and not disgust_on_left)
+            or (position == 'right' and disgust_on_left)
+        ):
+            self.category = 'neutral'
+        else:
+            self.category = 'away'
+
+    def finish(self):
+        # if the fixation is only a blink event
+        if not hasattr(self, 'samples'):
+            self.duration = 0
+            return
+
+        self.end_time = int(self.samples[-1]['time'])
+        self.duration = self.end_time - self.start_time
+        self.avgx = (sum([float(s['avgx']) for s in self.samples]) /
+                     len(self.samples))
+        self.avgy = (sum([float(s['avgy']) for s in self.samples]) /
+                     len(self.samples))
+        # quadrants are numbered l2r, t2b
+        # this seemed like a good way to calculate them, but maybe not...
+        # TODO pass screen resolution as parameters
+        self.quadrant = int(2*self.avgx/1280) + 2*int(2*self.avgy/1024)
+        # stop it from running out of memory!
+        del self.samples
+
+    def is_still_going(self, sample):
         """Decides whether the sample continues this fixation."""
 
         # if there's a blink, scrap the fixation
@@ -195,25 +302,6 @@ class Fixation:
         else:
             return False
 
-    def finish(self):
-        # if the fixation is only a blink event
-        if not hasattr(self, 'samples'):
-            self.duration = 0
-            return
-
-        self.end = int(self.samples[-1]['time'])
-        self.duration = self.end - self.start_time
-        self.avgx = (sum([float(s['avgx']) for s in self.samples]) /
-                     len(self.samples))
-        self.avgy = (sum([float(s['avgy']) for s in self.samples]) /
-                     len(self.samples))
-        # quadrants are numbered l2r, t2b
-        # this seemed like a good way to calculate them, but maybe not...
-        # TODO pass screen resolution as parameters
-        self.quadrant = int(2*self.avgx/1280) + 2*int(2*self.avgy/1024)
-        # stop it from running out of memory!
-        del self.samples
-
 
 class Trial:
     """An image-viewing trial."""
@@ -226,38 +314,67 @@ class Trial:
         self.disgust_on_left = (
             self.run_order['LeftImage'] == '[DisgustImage]')
 
+    def __repr__(self):
+        """Give a more informative description."""
+        return "trial: {}, {} and {}".format(str(self.start_time),
+                                             self.run_order['LeftImage'],
+                                             self.run_order['RightImage'])
+
     def aggregate_gaze_data(self, resolution=(1280, 1024)):
         """Returns a tuple: (time_disgust, time_neutral, time_away)"""
 
-        time_left = sum(f.duration
-                        for f in self.fixations
-                        # let's do this the quick-and-dirty way
-                        if 120 <= f.avgx <= 520 and 362 <= f.avgy <= 662
-                        )
-        time_right = sum(f.duration
-                         for f in self.fixations
-                         if 760 <= f.avgx <= 1160 and 362 <= f.avgy <= 662
-                         )
-        time_away = sum(f.duration
-                        for f in self.fixations
-                        if (
-                            f.avgx <= 120 or f.avgx >= 1160 or
-                            f.avgy <= 362 or f.avgy >= 662 or
-                            520 <= f.avgx <= 760
-                           )
-                        )
+        # This is the old way. It worked, but now the fixations are
+        # already classified.
+        ######
+        # time_left = sum(f.duration
+        #                 for f in self.fixations
+        #                 # let's do this the quick-and-dirty way
+        #                 if 120 <= f.avgx <= 520 and 362 <= f.avgy <= 662
+        #                 )
+        # time_right = sum(f.duration
+        #                  for f in self.fixations
+        #                  if 760 <= f.avgx <= 1160 and 362 <= f.avgy <= 662
+        #                  )
+        # time_away = sum(f.duration
+        #                 for f in self.fixations
+        #                 if (
+        #                     f.avgx <= 120 or f.avgx >= 1160 or
+        #                     f.avgy <= 362 or f.avgy >= 662 or
+        #                     520 <= f.avgx <= 760
+        #                    )
+        #                 )
 
-        if self.disgust_on_left:
-            return (time_left, time_right, time_away)
-        else:
-            return (time_right, time_left, time_away)
+        time_disgust = time_neutral = time_away = 0
+
+        for f in self.fixations:
+            if f.category == 'disgust':
+                time_disgust += f.duration
+            elif f.category == 'neutral':
+                time_neutral += f.duration
+            elif f.category == 'away':
+                time_away += f.duration
+            else:
+                raise(Exception('Unclassified fixation'))
+
+        return(time_disgust, time_neutral, time_away)
+
+    def make_epochs(self, duration=500):
+        """Divide data into epochs of default length 500ms."""
+
+        self.epochs = []
+
+        for t in range(self.start_time, self.end_time, duration):
+            fixes = [f for f in self.fixations if
+                     (f.end_time > t and f.start_time < t + duration)]
+            self.epochs.append(Epoch(fixes, t, duration))
+
+        # don't forget the last one
 
     def orientation_category(self):
         """After an initial fixation at center, the category of the first
         image the subject fixes on. If the first fixation isn't
         centered, or if it's wonky for some other reason, raise an
         InvalidTrial exception.
-
         """
 
         # the center of the screen
