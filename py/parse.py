@@ -363,7 +363,7 @@ class Trial:
 
         self.epochs = []
 
-        for t in range(self.start_time, self.end_time, duration):
+        for t in range(self.start_time, self.end_time-duration, duration):
             fixes = [f for f in self.fixations if
                      (f.end_time > t and f.start_time < t + duration)]
             self.epochs.append(Epoch(fixes, t, duration))
@@ -443,18 +443,62 @@ def orientation_bias(trials):
         return orients.count('disgust')/float(len(orients))
 
 
-def tabulate_gaze(directory):
-    for i in range(302, 306):
-        print('Processing subject {}...'.format(i))
-        e = Experiment(i)
-        block1, block2 = e.trials[:24], e.trials[24:]
-        print('block 1 | disgust: {}ms; neutral: {}ms'.format(
-            sum(t.time_disgust for t in block1),
-            sum(t.time_neutral for t in block1)))
-        print('block 2 | disgust: {}ms; neutral: {}ms'.format(
-            sum(t.time_disgust for t in block2),
-            sum(t.time_neutral for t in block2)))
-        del e
+def tabulate_epoch_statistics(
+        directory='../../disgust-habituation/experiment/data'):
+    """Find the dwell time for each stimulus in each epoch, averaged
+    across all trials.
+
+    returns a list of dictionaries:
+    {
+        "subject": subject number,
+        "e01_d": epoch 1 disgust,
+        "e01_n": epoch 1 neutral,
+        "e01_a": epoch 1 away,
+        "e02_d": epoch 2 disgust,
+        etc.
+    }
+    """
+
+    subject_numbers = sorted([int(f[f.index('-') + 1:f.index('.')])
+                              for f in
+                              os.listdir(directory)
+                              if f[-3:] == 'tsv'])
+
+    results = []
+
+    for subject in subject_numbers:
+        print('trying experiment {}...'.format(subject))
+        exp = Experiment(subject)
+        results.append({'subject': subject})
+
+        # list of averages for each epoch across all trials
+        averages_disgust = []
+        averages_neutral = []
+        averages_away = []
+        for ep in range(0, 24):
+            # for each epoch
+            # lists of times for this epoch in all trials
+            times_d = []
+            times_n = []
+            times_a = []
+            for tr in range(0, len(exp.trials)):
+                # for each trial
+                # note that not all subjects have the full 48 trials, e.g. 353
+                current = exp.trials[tr].epochs[ep]
+                times_d.append(current.time_disgust)
+                times_n.append(current.time_neutral)
+                times_a.append(current.time_away)
+            averages_disgust.append(sum(times_d)/float(len(times_d)))
+            averages_neutral.append(sum(times_n)/float(len(times_n)))
+            averages_away.append(sum(times_a)/float(len(times_a)))
+            results[-1].update({
+                'e{:02}_d'.format(ep + 1): sum(times_d)/float(len(times_d)),
+                'e{:02}_n'.format(ep + 1): sum(times_n)/float(len(times_n)),
+                'e{:02}_a'.format(ep + 1): sum(times_a)/float(len(times_a))
+                })
+            # print(results[-1])
+
+    return results
 
 
 def tabulate_orientation_bias(directory):
@@ -530,7 +574,7 @@ def tabulate_trials_per_subject(directory):
                       for t in range(24, 48)})
             subjects.append(d)
         except IndexError:
-            print("SOMEbody didn't do enough trials!")
+            print("Not enough trials")
 
     return subjects
 
@@ -548,9 +592,7 @@ def write_dictlist_to_csv(dictlist, filename, directory):
 
 
 if __name__ == '__main__':
-    subjects = tabulate_orientation_bias(
-       '../../disgust-habituation/experiment/data')
+    subjects = tabulate_epoch_statistics()
     write_dictlist_to_csv(subjects,
-                          'orientation_bias_by_subject.csv',
+                          'epochs_by_subject.csv',
                           '../../disgust-habituation/experiment/data/')
-    pass
