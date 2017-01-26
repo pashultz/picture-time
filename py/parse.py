@@ -9,10 +9,11 @@ import re
 class Epoch:
     """A short segment of a trial."""
 
-    def __init__(self, fixations, start_time, duration):
+    def __init__(self, fixations, start_time, duration, image_categories):
         self.start_time, self.duration = start_time, duration
         self.fixations = fixations
         self.calculate_dwell_times()
+        self.image_categories = image_categories
 
     def __repr__(self):
         return(str(self.start_time))
@@ -20,7 +21,7 @@ class Epoch:
     def calculate_dwell_times(self):
         """How long did the subject dwell on each type of stimulus?"""
 
-        self.time_away = self.time_disgust = self.time_neutral = 0
+        self.dwell_times = {}
 
         for f in self.fixations:
             # figure out how much time is within the epoch,
@@ -28,16 +29,11 @@ class Epoch:
                 min(self.start_time + self.duration, f.end_time)
                 - max(self.start_time, f.start_time)
                 )
-
             # and add the time to the right category
-            if f.category == 'away':
-                self.time_away += crop
-            elif f.category == 'disgust':
-                self.time_disgust += crop
-            elif f.category == 'neutral':
-                self.time_neutral += crop
-            else:
-                raise(Exception('Unclassified fixation'))
+            try:
+                self.dwell_times[f.category] += crop
+            except KeyError:
+                self.dwell_times[f.category] = crop
 
 
 class Experiment:
@@ -60,9 +56,7 @@ class Experiment:
         self.get_fixations()
 
         for t in self.trials:
-            (t.time_disgust,
-             t.time_neutral,
-             t.time_away) = t.aggregate_gaze_data()
+            t.dwell_times = t.aggregate_gaze_data()
             t.make_epochs()
 
     def get_fixations(self):
@@ -105,7 +99,8 @@ class Experiment:
                         row = rows.next()
                     else:
                         current_fix.finish()
-                        current_fix.classify(trial.disgust_on_left)
+                        current_fix.classify(trial.neutral_on_right,
+                                             trial.image_categories)
                         if current_fix.duration >= current_fix.min_duration:
                             trial.fixations.append(current_fix)
                         # if it's too short, just overwrite it with a new one
@@ -169,8 +164,6 @@ class Experiment:
 
         with open(self.directory + "/subject-"
                   + str(self.subject_number) + ".tsv") as tsvfile:
-            # figure out the offset between the EyeTribe clock and
-            # the OpenSesame timestamps
             p = re.compile('var time_experiment ([0-9]+)')
             t = p.search(tsvfile.read()).group(1)
             return int(t)
@@ -204,7 +197,8 @@ class Fixation:
         'category' (string): the type of image being stared at
     """
 
-    def __init__(self, sample, threshold=55, min_duration=100):
+    def __init__(self, sample, threshold=55,
+                 min_duration=100):
         self.start_time = int(sample['time'])
         self.samples = [sample]
         # the dispersion window starts as a point
@@ -221,7 +215,7 @@ class Fixation:
                                                  self.duration,
                                                  self.category))
 
-    def classify(self, disgust_on_left,
+    def classify(self, neutral_on_right, image_categories,
                  left_boundaries=[662, 520, 362, 120],
                  right_boundaries=[662, 1160, 362, 760]):
         """Set self.category to a string naming the type of image.
@@ -245,18 +239,21 @@ class Fixation:
             position = 'right'
 
         # figure out what category that corresponds to
+
+        # TODO this is very fragile; could break with new filenames or
+        # OpenSesame variable names.
         if (
-            (position == 'left' and disgust_on_left)
-            or (position == 'right' and not disgust_on_left)
+            (position == 'left' and neutral_on_right)
+            or (position == 'right' and not neutral_on_right)
         ):
-            self.category = 'disgust'
+            self.category = image_categories[1]  # ewwwwww
         elif (
-            (position == 'left' and not disgust_on_left)
-            or (position == 'right' and disgust_on_left)
+            (position == 'left' and not neutral_on_right)
+            or (position == 'right' and neutral_on_right)
         ):
-            self.category = 'neutral'
+            self.category = image_categories[0]  # just, no
         else:
-            self.category = 'away'
+            self.category = 'Away'
 
     def finish(self):
         # if the fixation is only a blink event
@@ -309,9 +306,10 @@ class Trial:
         self.start_time = start_time
         self.end_time = end_time
         self.run_order = run_order
+        self.image_categories = self.get_image_categories()
 
         # which way are the images arranged? True/False
-        self.disgust_on_left = (
+        self.neutral_on_right = (
             self.run_order['LeftImage'] == '[DisgustImage]')
 
     def __repr__(self):
@@ -320,43 +318,30 @@ class Trial:
                                              self.run_order['LeftImage'],
                                              self.run_order['RightImage'])
 
+    def get_image_categories(self):
+        """Figure out what types of images are being used."""
+
+        # Make a list of things that look like filenames, shorn of
+        # their numerical index and extension.
+
+        # This is really fragile, but it's the best way I can see given the
+        # data we already have.
+
+        return [re.search(r'[^0-9]+', v).group()
+                for v in self.run_order.values()
+                if v[-4:] == '.bmp']
+
     def aggregate_gaze_data(self, resolution=(1280, 1024)):
-        """Returns a tuple: (time_disgust, time_neutral, time_away)"""
+        """Returns a dictionary: {'category': time, ... } """
 
-        # This is the old way. It worked, but now the fixations are
-        # already classified.
-        ######
-        # time_left = sum(f.duration
-        #                 for f in self.fixations
-        #                 # let's do this the quick-and-dirty way
-        #                 if 120 <= f.avgx <= 520 and 362 <= f.avgy <= 662
-        #                 )
-        # time_right = sum(f.duration
-        #                  for f in self.fixations
-        #                  if 760 <= f.avgx <= 1160 and 362 <= f.avgy <= 662
-        #                  )
-        # time_away = sum(f.duration
-        #                 for f in self.fixations
-        #                 if (
-        #                     f.avgx <= 120 or f.avgx >= 1160 or
-        #                     f.avgy <= 362 or f.avgy >= 662 or
-        #                     520 <= f.avgx <= 760
-        #                    )
-        #                 )
-
-        time_disgust = time_neutral = time_away = 0
-
+        dwell_times = {}
         for f in self.fixations:
-            if f.category == 'disgust':
-                time_disgust += f.duration
-            elif f.category == 'neutral':
-                time_neutral += f.duration
-            elif f.category == 'away':
-                time_away += f.duration
-            else:
-                raise(Exception('Unclassified fixation'))
+            try:
+                dwell_times[f.category] += f.duration
+            except KeyError:
+                dwell_times[f.category] = f.duration
 
-        return(time_disgust, time_neutral, time_away)
+        return dwell_times
 
     def make_epochs(self, duration=500):
         """Divide data into epochs of default length 500ms."""
@@ -366,7 +351,13 @@ class Trial:
         for t in range(self.start_time, self.end_time-duration, duration):
             fixes = [f for f in self.fixations if
                      (f.end_time > t and f.start_time < t + duration)]
-            self.epochs.append(Epoch(fixes, t, duration))
+            self.epochs.append(
+                Epoch(fixations=fixes,
+                      start_time=t,
+                      duration=duration,
+                      image_categories=self.image_categories
+                      )
+            )
 
         # don't forget the last one
 
@@ -406,10 +397,10 @@ class Trial:
             # if no noncentered fixations, chuck it
             return None
 
-        if self.disgust_on_left:
-            sides = ('disgust', 'neutral')
+        if self.neutral_on_right:
+            sides = self.image_categories[::-1]
         else:
-            sides = ('neutral', 'disgust')
+            sides = self.image_categories
 
         if bias < 0:
             return sides[0]
