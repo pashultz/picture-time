@@ -443,8 +443,16 @@ def orientation_bias(trials):
         return orients.count('disgust')/float(len(orients))
 
 
-def tabulate_epoch_statistics(
-        directory='../../disgust-habituation/experiment/data'):
+def get_subject_numbers(
+        directory='/home/pashultz/Dropbox/disgust-habituation/experiment/data/'
+        ):
+    return sorted([int(f[f.index('-') + 1:f.index('.')])
+                   for f in
+                   os.listdir(directory)
+                   if f[-3:] == 'tsv'])
+
+
+def tabulate_epoch_statistics(subject_numbers):
     """Find the dwell time for each stimulus in each epoch, averaged
     across all trials.
 
@@ -458,11 +466,6 @@ def tabulate_epoch_statistics(
         etc.
     }
     """
-
-    subject_numbers = sorted([int(f[f.index('-') + 1:f.index('.')])
-                              for f in
-                              os.listdir(directory)
-                              if f[-3:] == 'tsv'])
 
     results = []
 
@@ -501,7 +504,7 @@ def tabulate_epoch_statistics(
     return results
 
 
-def tabulate_orientation_bias(directory):
+def tabulate_orientation_bias(subject_numbers):
     """Returns a list of dicts. For each subject, it gives:
     - subject
     - bias_block1
@@ -522,11 +525,6 @@ def tabulate_orientation_bias(directory):
 
     biases = []
 
-    subject_numbers = sorted([int(f[f.index('-') + 1:f.index('.')])
-                              for f in
-                              os.listdir(directory)
-                              if f[-3:] == 'tsv'])
-
     for subject in subject_numbers:
         print('trying {}'.format(subject))
         e = Experiment(subject)
@@ -546,18 +544,14 @@ def tabulate_orientation_bias(directory):
     return biases
 
 
-def tabulate_trials_per_subject(directory):
+def tabulate_trials_per_subject(subject_numbers):
     """Returns a list of dicts, with each trial keyed as d|n[block].[trial]."""
 
-    subject_numbers = sorted([int(f[f.index('-') + 1:f.index('.')])
-                              for f in
-                              os.listdir(directory)
-                              if f[-3:] == 'tsv'])
     # This code pulls out variables and puts them in SPSS-firendly format
     subjects = []
     for s in [sub for sub in subject_numbers if sub <= 414]:
         print('loading subject {}'.format(s))
-        e = Experiment(s, directory)
+        e = Experiment(s)
         d = {'asub': e.subject_number}
         try:
             d.update({'d1.{:02}'.format(t + 1): e.trials[t].time_disgust
@@ -592,7 +586,7 @@ def write_dictlist_to_csv(dictlist, filename, directory):
 
 
 if __name__ == '__main__':
-    subjects = tabulate_epoch_statistics()
+    subjects = tabulate_epoch_statistics(get_subject_numbers())
     write_dictlist_to_csv(subjects,
                           'epochs_by_subject.csv',
                           '../../disgust-habituation/experiment/data/')
