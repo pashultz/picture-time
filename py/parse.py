@@ -226,7 +226,7 @@ class Fixation:
         # figure out what part of the screen we're looking at
         if (
                 self.avgx < left_boundaries[3]
-                or self.avgx > right_boundaries[3]
+                or self.avgx > right_boundaries[1]
                 or self.avgy < left_boundaries[2]
                 or self.avgy > left_boundaries[0]
         ):
@@ -564,6 +564,60 @@ def tabulate_trials_per_subject(subject_numbers):
     return subjects
 
 
+def collect_fear_stimulus_results(subjects):
+    """Return a list of dictionaries corresponding to subjects 500 and up.
+
+    Blocks in random (counterbalanced) order: neutral/disgust, neutral/fear.
+    """
+
+    # subjects = [s for s in get_subject_numbers() if s >= 500]
+    results = []
+
+    for s in subjects:
+        print("loading {}...".format(s))
+        e = Experiment(s)
+        res = {}
+        res = {"subject": e.subject_number}
+        for i in range(24):
+            t = e.trials[i]
+            # it's either poop or a dog
+            if 'Poop' in t.image_categories:
+                res["d{:02}".format(i+1)] = (
+                    t.dwell_times['Poop'] if 'Poop' in t.dwell_times
+                    else 0)
+            else:
+                res["t{:02}".format(i+1)] = (
+                    t.dwell_times['Dog'] if 'Dog' in t.dwell_times
+                    else 0)
+            res["nd{:02}".format(i+1)] = (
+                t.dwell_times['Colors'] if 'Colors' in t.dwell_times
+                else 0)
+            res["wd{:02}".format(i+1)] = (
+                t.dwell_times['Away'] if 'Away' in t.dwell_times
+                else 0)
+        for i in range(24, 48):
+            t = e.trials[i]
+            if 'Poop' in t.image_categories:
+                res["d{:02}".format(i-23)] = (
+                    t.dwell_times['Poop'] if 'Poop' in t.dwell_times
+                    else 0)
+            else:
+                res["t{:02}".format(i-23)] = (
+                    t.dwell_times['Dog'] if 'Dog' in t.dwell_times
+                    else 0)
+            res["nt{:02}".format(i-23)] = (
+                t.dwell_times['Colors'] if 'Colors' in t.dwell_times
+                else 0)
+            res["wt{:02}".format(i-23)] = (
+                t.dwell_times['Away'] if 'Away' in t.dwell_times
+                else 0)
+
+        print(res)
+        results.append(res)
+
+    return results
+
+
 # This code writes the data file
 def write_dictlist_to_csv(dictlist, filename, directory):
     """Write a list of dicts to a CSV file."""
@@ -577,7 +631,8 @@ def write_dictlist_to_csv(dictlist, filename, directory):
 
 
 if __name__ == '__main__':
-    subjects = tabulate_epoch_statistics(get_subject_numbers())
-    write_dictlist_to_csv(subjects,
-                          'epochs_by_subject.csv',
+    subjects = [s for s in get_subject_numbers() if s >= 500]
+    results = collect_fear_stimulus_results(subjects)
+    write_dictlist_to_csv(results,
+                          'disgust_versus_fear.csv',
                           '../../disgust-habituation/experiment/data/')
