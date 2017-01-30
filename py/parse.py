@@ -431,7 +431,7 @@ def orientation_bias(trials):
     if len(orients) == 0:
         return None
     else:
-        return orients.count('disgust')/float(len(orients))
+        return orients.count('Poop')/float(len(orients))
 
 
 def get_subject_numbers(
@@ -479,9 +479,12 @@ def tabulate_epoch_statistics(subject_numbers):
                 # for each trial
                 # note that not all subjects have the full 48 trials, e.g. 353
                 current = exp.trials[tr].epochs[ep]
-                times_d.append(current.time_disgust)
-                times_n.append(current.time_neutral)
-                times_a.append(current.time_away)
+                times_d.append(current.dwell_times['Poop']
+                               if 'Poop' in current.dwell_times else 0)
+                times_n.append(current.dwell_times['Colors']
+                               if 'Colors' in current.dwell_times else 0)
+                times_a.append(current.dwell_times['Away']
+                               if 'Away' in current.dwell_times else 0)
             averages_disgust.append(sum(times_d)/float(len(times_d)))
             averages_neutral.append(sum(times_n)/float(len(times_n)))
             averages_away.append(sum(times_a)/float(len(times_a)))
@@ -535,7 +538,7 @@ def tabulate_orientation_bias(subject_numbers):
     return biases
 
 
-def tabulate_trials_per_subject(subject_numbers):
+def tabulate_dwells_per_subject(subject_numbers):
     """Returns a list of dicts, with each trial keyed as d|n[block].[trial]."""
 
     # This code pulls out variables and puts them in SPSS-firendly format
@@ -545,18 +548,38 @@ def tabulate_trials_per_subject(subject_numbers):
         e = Experiment(s)
         d = {'asub': e.subject_number}
         try:
-            d.update({'d1.{:02}'.format(t + 1): e.trials[t].time_disgust
-                      for t in range(24)})
-            d.update({'d2.{:02}'.format(t - 23): e.trials[t].time_disgust
-                      for t in range(24, 48)})
-            d.update({'n1.{:02}'.format(t + 1): e.trials[t].time_neutral
-                      for t in range(24)})
-            d.update({'n2.{:02}'.format(t - 23): e.trials[t].time_neutral
-                      for t in range(24, 48)})
-            d.update({'w1.{:02}'.format(t + 1): e.trials[t].time_away
-                      for t in range(24)})
-            d.update({'w2.{:02}'.format(t - 23): e.trials[t].time_away
-                      for t in range(24, 48)})
+            d.update({
+                'd1.{:02}'.format(t + 1):
+                (e.trials[t].dwell_times['Poop']
+                 if 'Poop' in e.trials[t].dwell_times else 0)
+                for t in range(24)})
+            d.update({
+                'd2.{:02}'.format(t - 23):
+                (e.trials[t].dwell_times['Poop']
+                 if 'Poop' in e.trials[t].dwell_times else 0)
+                for t in range(24, 48)})
+            d.update({
+                'n1.{:02}'.format(t + 1):
+                (e.trials[t].dwell_times['Colors']
+                 if 'Colors' in e.trials[t].dwell_times else 0)
+                for t in range(24)})
+            d.update({
+                'n2.{:02}'.format(t - 23):
+                (e.trials[t].dwell_times['Colors']
+                 if 'Colors' in e.trials[t].dwell_times else 0)
+                for t in range(24, 48)})
+            d.update({
+                'w1.{:02}'.format(t + 1):
+                (e.trials[t].dwell_times['Away']
+                 if 'Away' in e.trials[t].dwell_times
+                 else 0)
+                for t in range(24)})
+            d.update({
+                'w2.{:02}'.format(t - 23):
+                (e.trials[t].dwell_times['Away']
+                 if 'Away' in e.trials[t].dwell_times
+                 else 0)
+                for t in range(24, 48)})
             subjects.append(d)
         except IndexError:
             print("Not enough trials")
@@ -631,8 +654,9 @@ def write_dictlist_to_csv(dictlist, filename, directory):
 
 
 if __name__ == '__main__':
-    subjects = [s for s in get_subject_numbers() if s >= 500]
-    results = collect_fear_stimulus_results(subjects)
+    # subjects >= 500 have threat stimuli, not just disgust
+    subjects = [s for s in get_subject_numbers() if s < 500]
+    results = tabulate_epoch_statistics(subjects)
     write_dictlist_to_csv(results,
-                          'disgust_versus_fear.csv',
+                          'epoch_averages_across_trials.csv',
                           '../../disgust-habituation/experiment/data/')
