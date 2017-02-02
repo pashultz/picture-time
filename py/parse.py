@@ -361,7 +361,7 @@ class Trial:
 
         # don't forget the last one
 
-    def orientation_category(self):
+    def orienting_category(self):
         """After an initial fixation at center, the category of the first
         image the subject fixes on. If the first fixation isn't
         centered, or if it's wonky for some other reason, raise an
@@ -420,18 +420,20 @@ class InvalidTrial(Exception):
 
 
 # Global functions
-def orientation_bias(trials):
+def orienting_bias(trials):
     """Given a list of trials, return the proportion (0<x<1) that begin
     with a fixation on the disgusting stimulus.
     """
 
-    orients = [t.orientation_category() for t in trials
-               if t.orientation_category]
+    orients = [t.orienting_category() for t in trials
+               if t.orienting_category]
 
     if len(orients) == 0:
         return None
     else:
-        return orients.count('Poop')/float(len(orients))
+        return ((orients.count('Poop') +
+                orients.count('Dog'))
+                / float(len(orients)))
 
 
 def get_subject_numbers(
@@ -498,7 +500,7 @@ def tabulate_epoch_statistics(subject_numbers):
     return results
 
 
-def tabulate_orientation_bias(subject_numbers):
+def tabulate_orienting_bias(subject_numbers):
     """Returns a list of dicts. For each subject, it gives:
     - subject
     - bias_block1
@@ -524,16 +526,16 @@ def tabulate_orientation_bias(subject_numbers):
         e = Experiment(subject)
         biases.append({
             'subject': subject,
-            'bias_block1': orientation_bias(e.trials[:24]),
-            'bias_block2': orientation_bias(e.trials[25:])
+            'bias_block1': orienting_bias(e.trials[:24]),
+            'bias_block2': orienting_bias(e.trials[25:])
             })
 
         for i in range(6):
             (biases[-1]["bias_block1_{}".format(i + 1)]
-             ) = orientation_bias(e.subblocks[i])
+             ) = orienting_bias(e.subblocks[i])
         for i in range(6):
             (biases[-1]["bias_block2_{}".format(i + 1)]
-             ) = orientation_bias(e.subblocks[i + 6])
+             ) = orienting_bias(e.subblocks[i + 6])
 
     return biases
 
@@ -655,8 +657,8 @@ def write_dictlist_to_csv(dictlist, filename, directory):
 
 if __name__ == '__main__':
     # subjects >= 500 have threat stimuli, not just disgust
-    subjects = [s for s in get_subject_numbers() if s < 500]
-    results = tabulate_epoch_statistics(subjects)
+    subjects = [s for s in get_subject_numbers() if s >= 500]
+    results = tabulate_orienting_bias(subjects)
     write_dictlist_to_csv(results,
-                          'epoch_averages_across_trials.csv',
+                          'orienting_bias_second_condition.csv',
                           '../../disgust-habituation/experiment/data/')
