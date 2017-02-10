@@ -39,8 +39,10 @@ class Epoch:
 class Experiment:
     """A run of the experiment."""
 
-    def __init__(self, subject_number,
-                 directory='../../disgust-habituation/experiment/data'):
+    def __init__(self,
+                 subject_number,
+                 directory='../../disgust-habituation/experiment/data',
+                 subblock_size=4):
         self.subject_number = subject_number
         self.directory = directory
 
@@ -50,8 +52,9 @@ class Experiment:
         self.timestamp_offset = self.get_timestamp_offset()
         self.experiment_start_time = self.get_experiment_start_time()
         self.trials = self.get_trials()
-        # two blocks of six subblocks of four trials each
-        self.subblocks = [self.trials[4*i:4*(i+1)] for i in range(12)]
+        # by default, each block has six subblocks of four trials each
+        self.subblocks = [self.trials[subblock_size*i:subblock_size*(i+1)]
+                          for i in range(len(self.trials)/subblock_size)]
 
         self.get_fixations()
 
@@ -421,20 +424,26 @@ class InvalidTrial(Exception):
 
 # Global functions
 def orienting_bias(trials):
-    """Given a list of trials, return the proportion (0<x<1) that begin
-    with a fixation on the disgusting or threatening stimulus.
+    """Given a list of trials, return a two-element tuple:
+    - the proportion (0<x<1) that begin with a fixation
+          on the disgusting or threatening stimulus, and
+    - the number of "valid" trials (i.e., those with an orienting category
     """
 
     orients = [t.orienting_category() for t in trials
                if t.orienting_category() is not None]
 
     if len(orients) == 0:
-        return None
+        # if the trial is invalid...
+        # this is sort of a Neanderthal error-reporting practice,
+        # but it should be easy to spot in SPSS or whatever
+        return (-1, 0)
     else:
         # we can use the sum, since only one will be nonzero
         return ((orients.count('Poop') +
                 orients.count('Dog'))
-                / float(len(orients)))
+                / float(len(orients)),
+                len(orients))
 
 
 def get_subject_numbers(
@@ -501,60 +510,84 @@ def tabulate_epoch_statistics(subject_numbers):
     return results
 
 
-def tabulate_orienting_bias(subject_numbers):
+def tabulate_orienting_bias(subject_numbers, subblock_size=4):
     """Returns a list of dicts. For each subject, it gives:
     - subject
-    - bias_block1
-    - bias_block1_1
+    - bias_block1: float between 0 and 1, bias for the entire block
+    - bias_block1_1: same, for the subblock
+    - valid_block1_1: integer, # of trials beginning with a centered fixation
     - bias_block1_2
-    - bias_block1_3
-    - bias_block1_4
-    - bias_block1_5
-    - bias_block1_6
+      ...
+
     - bias_block2
     - bias_block2_1
-    - bias_block2_2
-    - bias_block2_3
-    - bias_block2_4
-    - bias_block2_5
-    - bias_block2_6
+    - valid_block2_1
+    - bias_block2_2...
     """
 
     biases = []
 
     for subject in subject_numbers:
-        print('trying {}'.format(subject))
-        e = Experiment(subject)
+        print('trying {} with subblocks of {} trials'.format(
+            subject, subblock_size))
+        e = Experiment(subject, subblock_size=subblock_size)
+
+        # assuming two big blocks
+        subblock_count = len(e.trials) / subblock_size / 2
+
+        # get stats for each big block
         biases.append({
             'subject': subject,
-            'bias_block1': orienting_bias(e.trials[:24]),
-            'bias_block2': orienting_bias(e.trials[25:])
+            'bias_block1': orienting_bias(e.trials[:24])[0],
+            'valid_block1': orienting_bias(e.trials[:24])[1],
+            'bias_block2': orienting_bias(e.trials[24:])[0],
+            'valid_block2': orienting_bias(e.trials[24:])[1],
             })
 
-        for i in range(6):
+        # get stats for for each subblock of block 1
+        for i in range(subblock_count):
             (biases[-1]["bias_block1_{}".format(i + 1)]
-             ) = orienting_bias(e.subblocks[i])
-        for i in range(6):
-            (biases[-1]["bias_block2_{}".format(i + 1)]
-             ) = orienting_bias(e.subblocks[i + 6])
+             ) = orienting_bias(e.subblocks[i])[0]
+            (biases[-1]["valid_block1_{}".format(i + 1)]
+             ) = orienting_bias(e.subblocks[i])[1]
 
-        # identify the blocks as disgust or fear
+        # and now for each subblock of block 2
+        for i in range(subblock_count):
+            (biases[-1]["bias_block2_{}".format(i + 1)]
+             ) = orienting_bias(e.subblocks[i + subblock_count])[0]
+            (biases[-1]["valid_block2_{}".format(i + 1)]
+             ) = orienting_bias(e.subblocks[i + subblock_count])[1]
+
+        # identify the blocks and subblocks as disgust or fear
+        # TODO could this code be any stupider? Nuke and start over
         if 'Dog' in e.trials[0].image_categories:
             biases[-1]['total_bias_fear'] = biases[-1]['bias_block1']
             biases[-1]['total_bias_disgust'] = biases[-1]['bias_block2']
-            for i in range(6):
+            biases[-1]['total_valid_fear'] = biases[-1]['valid_block1']
+            biases[-1]['total_valid_disgust'] = biases[-1]['valid_block2']
+            for i in range(4):
                 biases[-1]["bias_fear_{}".format(i + 1)] \
                     = biases[-1]['bias_block1_{}'.format(i + 1)]
                 biases[-1]["bias_disgust_{}".format(i + 1)] \
                     = biases[-1]['bias_block2_{}'.format(i + 1)]
+                biases[-1]["valid_fear_{}".format(i + 1)] \
+                    = biases[-1]['valid_block1_{}'.format(i + 1)]
+                biases[-1]["valid_disgust_{}".format(i + 1)] \
+                    = biases[-1]['valid_block2_{}'.format(i + 1)]
         else:
             biases[-1]['total_bias_disgust'] = biases[-1]['bias_block1']
             biases[-1]['total_bias_fear'] = biases[-1]['bias_block2']
-            for i in range(6):
+            biases[-1]['total_valid_disgust'] = biases[-1]['valid_block1']
+            biases[-1]['total_valid_fear'] = biases[-1]['valid_block2']
+            for i in range(4):
                 biases[-1]["bias_disgust_{}".format(i + 1)] \
                     = biases[-1]['bias_block1_{}'.format(i + 1)]
                 biases[-1]["bias_fear_{}".format(i + 1)] \
                     = biases[-1]['bias_block2_{}'.format(i + 1)]
+                biases[-1]["valid_disgust_{}".format(i + 1)] \
+                    = biases[-1]['valid_block1_{}'.format(i + 1)]
+                biases[-1]["valid_fear_{}".format(i + 1)] \
+                    = biases[-1]['valid_block2_{}'.format(i + 1)]
 
     return biases
 
@@ -677,7 +710,7 @@ def write_dictlist_to_csv(dictlist, filename, directory):
 if __name__ == '__main__':
     # subjects >= 500 have threat stimuli, not just disgust
     subjects = [s for s in get_subject_numbers() if s >= 500]
-    results = tabulate_epoch_statistics(subjects)
+    results = tabulate_orienting_bias(subjects, subblock_size=6)
     write_dictlist_to_csv(results,
-                          'epoch_averages_across_trials_second_condition.csv',
+                          'orienting_bias_second_condition_long_subblocks.csv',
                           '../../disgust-habituation/experiment/data/')
