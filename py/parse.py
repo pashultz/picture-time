@@ -422,15 +422,16 @@ class InvalidTrial(Exception):
 # Global functions
 def orienting_bias(trials):
     """Given a list of trials, return the proportion (0<x<1) that begin
-    with a fixation on the disgusting stimulus.
+    with a fixation on the disgusting or threatening stimulus.
     """
 
     orients = [t.orienting_category() for t in trials
-               if t.orienting_category]
+               if t.orienting_category() is not None]
 
     if len(orients) == 0:
         return None
     else:
+        # we can use the sum, since only one will be nonzero
         return ((orients.count('Poop') +
                 orients.count('Dog'))
                 / float(len(orients)))
@@ -536,6 +537,24 @@ def tabulate_orienting_bias(subject_numbers):
         for i in range(6):
             (biases[-1]["bias_block2_{}".format(i + 1)]
              ) = orienting_bias(e.subblocks[i + 6])
+
+        # identify the blocks as disgust or fear
+        if 'Dog' in e.trials[0].image_categories:
+            biases[-1]['total_bias_fear'] = biases[-1]['bias_block1']
+            biases[-1]['total_bias_disgust'] = biases[-1]['bias_block2']
+            for i in range(6):
+                biases[-1]["bias_fear_{}".format(i + 1)] \
+                    = biases[-1]['bias_block1_{}'.format(i + 1)]
+                biases[-1]["bias_disgust_{}".format(i + 1)] \
+                    = biases[-1]['bias_block2_{}'.format(i + 1)]
+        else:
+            biases[-1]['total_bias_disgust'] = biases[-1]['bias_block1']
+            biases[-1]['total_bias_fear'] = biases[-1]['bias_block2']
+            for i in range(6):
+                biases[-1]["bias_disgust_{}".format(i + 1)] \
+                    = biases[-1]['bias_block1_{}'.format(i + 1)]
+                biases[-1]["bias_fear_{}".format(i + 1)] \
+                    = biases[-1]['bias_block2_{}'.format(i + 1)]
 
     return biases
 
@@ -658,7 +677,7 @@ def write_dictlist_to_csv(dictlist, filename, directory):
 if __name__ == '__main__':
     # subjects >= 500 have threat stimuli, not just disgust
     subjects = [s for s in get_subject_numbers() if s >= 500]
-    results = tabulate_orienting_bias(subjects)
+    results = tabulate_epoch_statistics(subjects)
     write_dictlist_to_csv(results,
-                          'orienting_bias_second_condition.csv',
+                          'epoch_averages_across_trials_second_condition.csv',
                           '../../disgust-habituation/experiment/data/')
