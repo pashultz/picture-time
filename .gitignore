@@ -9,3 +9,6 @@ py/lib
 py/local
 py/pip-selfcheck.json
 py/share
+*.csv
+*.tsv
+test-data
