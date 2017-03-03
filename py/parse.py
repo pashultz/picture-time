@@ -6,7 +6,7 @@ import os
 import re
 
 
-class Epoch:
+class Epoch(object):
     """A short segment of a trial."""
 
     def __init__(self, fixations, start_time, duration, image_categories):
@@ -36,7 +36,7 @@ class Epoch:
                 self.dwell_times[f.category] = crop
 
 
-class Experiment:
+class Experiment(object):
     """A run of the experiment."""
 
     def __init__(self,
@@ -172,7 +172,7 @@ class Experiment:
             return int(t)
 
 
-class Fixation:
+class Fixation(object):
     """A fixation event.
 
     Takes a dictionary as an argument, corresponding to a sample event.
@@ -303,7 +303,7 @@ class Fixation:
             return False
 
 
-class Trial:
+class Trial(object):
     """An image-viewing trial."""
     def __init__(self, experiment, start_time, end_time, run_order):
         self.start_time = start_time
@@ -437,7 +437,7 @@ def orienting_bias(trials):
         # if the trial is invalid...
         # this is sort of a Neanderthal error-reporting practice,
         # but it should be easy to spot in SPSS or whatever
-        return (-1, 0)
+        return ("NaN", 0)
     else:
         # we can use the sum, since only one will be nonzero
         return ((orients.count('Poop') +
@@ -477,35 +477,41 @@ def tabulate_epoch_statistics(subject_numbers):
         exp = Experiment(subject)
         results.append({'subject': subject})
 
-        # list of averages for each epoch across all trials
-        averages_disgust = []
-        averages_neutral = []
-        averages_away = []
-        for ep in range(0, 24):
-            # for each epoch
-            # lists of times for this epoch in all trials
-            times_d = []
-            times_n = []
-            times_a = []
-            for tr in range(0, len(exp.trials)):
-                # for each trial
-                # note that not all subjects have the full 48 trials, e.g. 353
-                current = exp.trials[tr].epochs[ep]
-                times_d.append(current.dwell_times['Poop']
-                               if 'Poop' in current.dwell_times else 0)
-                times_n.append(current.dwell_times['Colors']
-                               if 'Colors' in current.dwell_times else 0)
-                times_a.append(current.dwell_times['Away']
-                               if 'Away' in current.dwell_times else 0)
-            averages_disgust.append(sum(times_d)/float(len(times_d)))
-            averages_neutral.append(sum(times_n)/float(len(times_n)))
-            averages_away.append(sum(times_a)/float(len(times_a)))
-            results[-1].update({
-                'e{:02}_d'.format(ep + 1): sum(times_d)/float(len(times_d)),
-                'e{:02}_n'.format(ep + 1): sum(times_n)/float(len(times_n)),
-                'e{:02}_a'.format(ep + 1): sum(times_a)/float(len(times_a))
-                })
-            # print(results[-1])
+        # organize the dwell times by epoch as a nested list
+        dwells_per_epoch = [[exp.trials[n].epochs[i].dwell_times
+                             for n in range(len(exp.trials))]
+                            for i in range(24)]
+
+        # adding up the dwell times for each category in a range of
+        # trials
+        def times_by_category(dwells_per_epoch, lis):
+            return [{cat: sum([t[cat]
+                               if cat in t
+                               else 0
+                               for t in [dwells_per_epoch[epo][tri]
+                                         for tri in lis]
+                               ])
+                     for cat in set(
+                exp.trials[lis[0]].image_categories
+                + ['Away'])}
+                for epo in range(24)]
+        # first block
+        times_first = times_by_category(dwells_per_epoch, range(24))
+        # second block
+        times_second = times_by_category(dwells_per_epoch, range(24, 48))
+
+        # TODO this code derives the category names from the first
+        # letter of the image filenames. This will fail very badly if
+        # image categories start with the same letter, e.g., Dogs and
+        # Digeridoos. Maybe fix by pre-assembling a list of
+        # abbreviations using the first letter that hasn't already
+        # been used?
+        def results_as_dict(times):
+            return {'e{:02}_{}'.format(i, cat[0].lower()): times[i][cat]
+                    for i in range(len(times)) for cat in times[0].keys()}
+
+        results[-1].update(results_as_dict(times_first))
+        results[-1].update(results_as_dict(times_second))
 
     return results
 
@@ -710,7 +716,7 @@ def write_dictlist_to_csv(dictlist, filename, directory):
 if __name__ == '__main__':
     # subjects >= 500 have threat stimuli, not just disgust
     subjects = [s for s in get_subject_numbers() if s >= 500]
-    results = tabulate_orienting_bias(subjects, subblock_size=6)
+    results = tabulate_epoch_statistics(subjects)
     write_dictlist_to_csv(results,
-                          'orienting_bias_second_condition_long_subblocks.csv',
+                          'epoch_averages_across_trials_second_condition.csv',
                           '../../disgust-habituation/experiment/data/')
